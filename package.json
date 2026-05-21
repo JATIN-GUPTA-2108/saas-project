@@ -1,0 +1,19 @@
+{
+  "name": "lms-saas",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=@lms/api & npm run dev --workspace=@lms/web",
+    "dev:api": "npm run dev --workspace=@lms/api",
+    "dev:web": "npm run dev --workspace=@lms/web",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "db:migrate": "npm run db:migrate --workspace=@lms/api",
+    "db:seed": "npm run db:seed --workspace=@lms/api"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
