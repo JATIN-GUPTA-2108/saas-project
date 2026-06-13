@@ -31,7 +31,10 @@ export class PermissionsGuard implements CanActivate {
     >();
     const headerOrgId = request.headers['x-organization-id'];
     const paramOrgId = request.params['id'];
+    const requestOrgId = (request as Request & { organizationId?: string })
+      .organizationId;
     const organizationId =
+      requestOrgId ||
       (typeof headerOrgId === 'string' && headerOrgId) ||
       (typeof paramOrgId === 'string' && paramOrgId);
     if (!organizationId) {

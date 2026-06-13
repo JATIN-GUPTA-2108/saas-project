@@ -11,6 +11,7 @@ const PERMISSIONS = [
   { slug: 'organization:manage', description: 'Manage organization settings' },
   { slug: 'member:invite', description: 'Invite members' },
   { slug: 'member:manage', description: 'Manage members' },
+  { slug: 'audit:view', description: 'View audit logs' },
 ];
 
 const SYSTEM_ROLES: Record<
@@ -31,6 +32,7 @@ const SYSTEM_ROLES: Record<
       'organization:manage',
       'member:invite',
       'member:manage',
+      'audit:view',
     ],
   },
   instructor: {

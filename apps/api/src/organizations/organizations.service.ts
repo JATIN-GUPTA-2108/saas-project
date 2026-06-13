@@ -7,6 +7,8 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { generateSlug } from '../common/utils/slug.util';
 import { RbacService } from '../rbac/rbac.service';
+import { AuditService } from '../audit/audit.service';
+import { BillingService } from '../billing/billing.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { InviteMemberDto } from './dto/invite-member.dto';
 
@@ -15,6 +17,8 @@ export class OrganizationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly rbac: RbacService,
+    private readonly audit: AuditService,
+    private readonly billing: BillingService,
   ) {}
 
   async createForUser(userId: string, name: string) {
@@ -39,6 +43,16 @@ export class OrganizationsService {
       },
     });
 
+    await this.billing.createDefaultSubscription(organization.id);
+    await this.audit.log({
+      organizationId: organization.id,
+      userId,
+      action: 'organization.created',
+      resourceType: 'organization',
+      resourceId: organization.id,
+      metadata: { name },
+    });
+
     return this.formatOrganization(organization);
   }
 
@@ -51,13 +65,17 @@ export class OrganizationsService {
       where: { userId },
       include: {
         organization: true,
-        role: true,
+        role: { include: { permissions: true } },
       },
     });
 
     return memberships.map((m) => ({
       ...this.formatOrganization(m.organization),
-      role: { slug: m.role.slug, name: m.role.name },
+      role: {
+        slug: m.role.slug,
+        name: m.role.name,
+        permissions: m.role.permissions.map((p) => p.slug),
+      },
     }));
   }
 
@@ -114,6 +132,15 @@ export class OrganizationsService {
         roleId: role.id,
       },
       include: { user: true, role: true },
+    });
+
+    await this.audit.log({
+      organizationId,
+      userId: actorId,
+      action: 'member.invited',
+      resourceType: 'membership',
+      resourceId: membership.id,
+      metadata: { email: dto.email, roleSlug: dto.roleSlug },
     });
 
     return {

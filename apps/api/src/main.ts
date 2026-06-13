@@ -1,15 +1,23 @@
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
+import { join } from 'path';
 import { AppModule } from './app.module';
+import { RedisIoAdapter } from './common/adapters/redis-io.adapter';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const config = app.get(ConfigService);
 
+  const redisIoAdapter = new RedisIoAdapter(app, config);
+  await redisIoAdapter.connectToRedis();
+  app.useWebSocketAdapter(redisIoAdapter);
+
   app.use(helmet());
+  app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads/' });
   app.enableCors({
     origin: config.get('CORS_ORIGIN', 'http://localhost:3000'),
     credentials: true,

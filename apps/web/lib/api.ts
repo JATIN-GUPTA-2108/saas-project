@@ -58,3 +58,41 @@ export async function apiRequest<T>(
 
   return json.data;
 }
+
+export async function apiUpload<T>(
+  path: string,
+  file: File,
+  options: {
+    token?: string | null;
+    organizationId?: string | null;
+    query?: Record<string, string>;
+  } = {},
+): Promise<T> {
+  const form = new FormData();
+  form.append('file', file);
+
+  const params = options.query
+    ? `?${new URLSearchParams(options.query).toString()}`
+    : '';
+  const headers: Record<string, string> = {};
+  if (options.token) headers.Authorization = `Bearer ${options.token}`;
+  if (options.organizationId) {
+    headers['x-organization-id'] = options.organizationId;
+  }
+
+  const res = await fetch(`${API_URL}${path}${params}`, {
+    method: 'POST',
+    headers,
+    body: form,
+  });
+
+  const json = (await res.json()) as ApiResponse<T>;
+  if (!res.ok || !json.success) {
+    throw new ApiError(
+      json.error?.message ?? 'Upload failed',
+      res.status,
+      json.error?.details,
+    );
+  }
+  return json.data;
+}

@@ -28,7 +28,7 @@ This document should act as:
 > **AI agents:** After completing a feature, phase, or module, update this section before finishing. Do not let this drift from the codebase.
 
 **Last updated:** 2026-05-20  
-**Active phase:** Phase 1 complete → Phase 2 next  
+**Active phase:** Phase 4 complete → Phase 5 next  
 **Product name (UI):** LearnFlow  
 **Monorepo root:** `d:\Projects\saas` (npm workspaces)
 
@@ -51,15 +51,24 @@ saas/
 │   │       ├── organizations/
 │   │       ├── rbac/
 │   │       ├── prisma/
-│   │       ├── common/       ← filters, interceptors, decorators, utils
+│   │       ├── courses/
+│   │       ├── uploads/
+│   │       ├── ai/           ← OpenAI/Anthropic + Zod validation + mock fallback
+│   │       ├── quizzes/
+│   │       ├── classroom/
+│   │       ├── analytics/
+│   │       ├── audit/
+│   │       ├── billing/
+│   │       ├── queue/        ← processors: video, ai, notifications, analytics
+│   │       ├── common/       ← filters, guards, redis-io adapter
 │   │       └── health/
 │   └── web/                  ← @lms/web — Next.js 15 App Router
-│       ├── app/              ← routes: /, /login, /register, /dashboard
-│       ├── components/
-│       ├── features/auth/
+│       ├── app/              ← /, /login, /register, /dashboard, /dashboard/courses/*
+│       ├── components/       ← dashboard-shell, auth-gate, providers
+│       ├── features/         ← auth/, courses/, quizzes/, classroom/, analytics/, billing/, audit/
 │       ├── services/
-│       ├── stores/           ← Zustand (auth only)
-│       ├── lib/api.ts
+│       ├── stores/           ← auth-store, classroom-store
+│       ├── lib/              ← api.ts, socket.ts
 │       └── types/
 ```
 
@@ -68,9 +77,9 @@ saas/
 | Phase | Status | Notes |
 |-------|--------|-------|
 | 1 — Setup, auth, RBAC, orgs | **Done** | API + web shell; Prisma v5; builds pass |
-| 2 — Courses, uploads, video, queues | Not started | BullMQ workers not wired yet |
-| 3 — AI quizzes, realtime | Not started | |
-| 4 — Analytics, payments, audit | Not started | |
+| 2 — Courses, uploads, video, queues | **Done** | BullMQ + video worker (dev stub); needs Redis running |
+| 3 — AI quizzes, realtime | **Done** | AI worker + Socket.io classroom; mock AI without API keys |
+| 4 — Analytics, payments, audit | **Done** | Stripe not wired; local plan changes only |
 | 5 — Monitoring, CI/CD, prod | Not started | Docker Compose defined; CI not added |
 
 ## 0.3 Implemented backend modules
@@ -82,6 +91,15 @@ saas/
 | Organizations | `apps/api/src/organizations/` | CRUD, members, invite |
 | RBAC | `apps/api/src/rbac/` | System roles, `PermissionsGuard`, `@RequirePermissions()` |
 | Health | `apps/api/src/health/` | `GET /api/v1/health` |
+| Queue | `apps/api/src/queue/` | BullMQ root + 5 queues; `video-processing` processor live |
+| Courses | `apps/api/src/courses/` | CRUD, publish, archive, lessons, progress |
+| Uploads | `apps/api/src/uploads/` | Video multipart upload → queue job |
+| AI | `apps/api/src/ai/` | OpenAI / Anthropic / mock quiz generation |
+| Quizzes | `apps/api/src/quizzes/` | Generate, take, score attempts |
+| Classroom | `apps/api/src/classroom/` | Socket.io gateway (`/classroom` namespace) |
+| Analytics | `apps/api/src/analytics/` | Event tracking queue + overview API |
+| Audit | `apps/api/src/audit/` | Audit log write + admin list API |
+| Billing | `apps/api/src/billing/` | Plans, subscription, change-plan scaffold |
 
 **Global middleware / cross-cutting**
 
@@ -110,8 +128,50 @@ All routes below are under `http://localhost:3001/api/v1` unless noted.
 | GET | `/organizations/:id/members` | Bearer | List members |
 | POST | `/organizations/:id/members` | Bearer + `member:invite` | Invite by email + role slug |
 | GET | `/rbac/permissions` | Bearer + `x-organization-id` | Current user's permissions in org |
+| GET | `/courses` | Bearer + org header | List courses (pagination, status, search) |
+| POST | `/courses` | Bearer + org + `course:create` | Create course |
+| GET | `/courses/:courseId` | Bearer + org | Get course |
+| PATCH | `/courses/:courseId` | Bearer + org + `course:update` | Update course |
+| POST | `/courses/:courseId/publish` | Bearer + org + `course:publish` | Publish (requires ≥1 lesson) |
+| POST | `/courses/:courseId/archive` | Bearer + org + `course:update` | Archive course |
+| DELETE | `/courses/:courseId` | Bearer + org + `course:update` | Delete course |
+| GET | `/courses/:courseId/lessons` | Bearer + org | List lessons |
+| POST | `/courses/:courseId/lessons` | Bearer + org + `course:update` | Create lesson |
+| PATCH | `/courses/:courseId/lessons/:lessonId` | Bearer + org + `course:update` | Update lesson |
+| DELETE | `/courses/:courseId/lessons/:lessonId` | Bearer + org + `course:update` | Delete lesson |
+| POST | `/courses/:courseId/lessons/:lessonId/progress` | Bearer + org | Update learner progress |
+| GET | `/courses/:courseId/progress` | Bearer + org | Course completion summary |
+| POST | `/uploads/video` | Bearer + org + `course:update` | Multipart video upload (`?lessonId=`) |
+| GET | `/uploads/video/:videoId` | Bearer + org | Video asset status |
+| POST | `/quizzes/generate` | Bearer + org + `course:update` | AI-generate quiz for lesson |
+| GET | `/quizzes/lesson/:lessonId` | Bearer + org | Get quiz (answers hidden for students) |
+| GET | `/quizzes/:quizId` | Bearer + org | Get quiz by id |
+| POST | `/quizzes/:quizId/attempts` | Bearer + org | Submit answers → scored result |
+| GET | `/quizzes/:quizId/attempts/me` | Bearer + org | Latest attempt summary |
+| GET | `/analytics/overview` | Bearer + org + `analytics:view` | Dashboard totals (30d) |
+| GET | `/analytics/events` | Bearer + org + `analytics:view` | Paginated event stream |
+| GET | `/audit/logs` | Bearer + org + `audit:view` | Paginated audit log |
+| GET | `/billing/plans` | Bearer + org | List plan tiers |
+| GET | `/billing/subscription` | Bearer + org | Current subscription |
+| POST | `/billing/subscription/change-plan` | Bearer + org + `billing:manage` | Change plan (local demo) |
 
-**Tenant context header:** `x-organization-id: <uuid>` — required for permission-gated routes and `/rbac/permissions`.
+**Auto-tracked analytics events** (via `AnalyticsTrackerService`):
+
+* `course.created`, `course.published`, `lesson.completed`, `quiz.attempted`
+
+**WebSocket** (`NEXT_PUBLIC_WS_URL`, namespace `/classroom`):
+
+| Event | Direction | Payload |
+|-------|-----------|---------|
+| `classroom:join` | client → server | `{ courseId, organizationId }` |
+| `classroom:leave` | client → server | `{ courseId, organizationId }` |
+| `chat:message` | client → server | `{ courseId, organizationId, message }` |
+| `chat:message` | server → clients | `{ userId, email, message, sentAt, ... }` |
+| `presence:update` | server → clients | `{ count, userId, action }` |
+
+Auth: JWT in `handshake.auth.token`.
+
+**Tenant context header:** `x-organization-id: <uuid>` — required for org-scoped routes. `OrganizationGuard` validates membership.
 
 ## 0.5 Database (Prisma / PostgreSQL)
 
@@ -126,10 +186,20 @@ All routes below are under `http://localhost:3001/api/v1` unless noted.
 | `roles` | System roles (`organization_id` null) or org-scoped later |
 | `permissions` | e.g. `course:create` |
 | `role_permissions` | M2M |
+| `courses` | Course catalog per org (`DRAFT` / `PUBLISHED` / `ARCHIVED`) |
+| `lessons` | Lessons within courses |
+| `video_assets` | Uploaded videos + processing status |
+| `lesson_progress` | Per-user lesson completion |
+| `quizzes` | One quiz per lesson (`GENERATING` / `READY` / `FAILED`) |
+| `quiz_questions` | MCQ questions (options JSON, correctIndex) |
+| `quiz_attempts` | Scored learner submissions |
+| `analytics_events` | Async-ingested engagement events |
+| `audit_logs` | Compliance / admin activity trail |
+| `subscriptions` | Per-org plan (FREE / STARTER / PRO) |
 
 **Seeded system roles** (`prisma/seed.ts`): `owner`, `admin`, `instructor`, `student`
 
-**Seeded permissions:** `course:create`, `course:update`, `course:publish`, `analytics:view`, `billing:manage`, `organization:manage`, `member:invite`, `member:manage`
+**Seeded permissions:** `course:create`, `course:update`, `course:publish`, `analytics:view`, `billing:manage`, `organization:manage`, `member:invite`, `member:manage`, `audit:view`
 
 ## 0.6 Implemented frontend
 
@@ -138,13 +208,22 @@ All routes below are under `http://localhost:3001/api/v1` unless noted.
 | `/` | Marketing landing (LearnFlow) |
 | `/login` | Login form → Zustand session |
 | `/register` | Register + workspace name |
-| `/dashboard` | Workspace list, active org switcher |
+| `/dashboard` | Workspace switcher + nav shell |
+| `/dashboard/courses` | Course list |
+| `/dashboard/courses/new` | Create course form |
+| `/dashboard/courses/[id]` | Course detail, lessons, video upload, quiz/classroom links |
+| `/dashboard/courses/[id]/classroom` | Live chat + presence (Socket.io) |
+| `/dashboard/courses/[id]/lessons/[lessonId]/quiz` | AI quiz generate, take, score |
+| `/dashboard/analytics` | Overview stats + event stream |
+| `/dashboard/billing` | Plans + subscription management |
+| `/dashboard/audit` | Audit log table (owner/admin) |
 
 **State rules (enforced):**
 
-* Zustand (`stores/auth-store.ts`) — auth tokens, user, active organization only
-* TanStack Query — `organizations` list from API
-* API client — `lib/api.ts` unwraps `{ success, data }`
+* Zustand — `auth-store` (session), `classroom-store` (chat/presence UI only)
+* TanStack Query — organizations, courses, lessons, quizzes
+* API client — `lib/api.ts` + `apiUpload()` for multipart
+* Socket.io — `lib/socket.ts` (classroom); do not duplicate API data in Zustand
 
 ## 0.7 Environment variables
 
@@ -156,10 +235,15 @@ See root `.env.example`. Key vars:
 | `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` | api | Token signing |
 | `API_PORT` | api | Default `3001` |
 | `CORS_ORIGIN` | api | Default `http://localhost:3000` |
-| `REDIS_HOST` / `REDIS_PORT` | api | Reserved for Phase 2 queues |
+| `REDIS_HOST` / `REDIS_PORT` | api | BullMQ connection (default localhost:6379) |
 | `NEXT_PUBLIC_API_URL` | web | Default `http://localhost:3001/api/v1` |
+| `NEXT_PUBLIC_WS_URL` | web | Socket.io server (default `http://localhost:3001`) |
+| `OPENAI_API_KEY` / `OPENAI_MODEL` | api | AI quiz gen (optional) |
+| `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` | api | AI fallback (optional) |
 
 ## 0.8 Local development commands
+
+**Full setup guide:** [`LOCAL_SETUP.md`](./LOCAL_SETUP.md) — prerequisites, env files, Docker, troubleshooting.
 
 ```bash
 # Install (from repo root)
@@ -170,6 +254,10 @@ cd apps/api
 npx prisma db push
 npx prisma db seed
 
+# Redis (required for video processing queue)
+docker run -d -p 6379:6379 redis:7-alpine
+# or: docker compose up -d redis
+
 # Run API
 npm run dev:api          # or: cd apps/api && npm run dev
 
@@ -179,25 +267,34 @@ npm run dev:web          # or: cd apps/web && npm run dev
 
 **Docker Compose** (postgres + redis + api + web): `docker compose up -d` — requires Docker Desktop.
 
+**Video processing note:** Worker is a dev stub (marks READY after delay). Production needs ffmpeg HLS + thumbnail pipeline.
+
 ## 0.9 Not implemented yet (do not assume these exist)
 
-* BullMQ queues and workers
-* Redis integration in NestJS
-* Course / lesson / video / quiz modules
-* Socket.io / realtime
-* OpenAI / Anthropic integration
-* File uploads, HLS, transcoding
-* Analytics events, audit logs, billing
+* Real ffmpeg HLS transcoding (video worker stub only)
+* Stripe payment integration (billing is local demo only)
+* Email queue processor
+* Classroom polls, reactions (chat + presence only)
+* Push/email notification delivery
 * GitHub Actions CI
 * Email verification / password reset / OAuth
+* Nginx in compose
+* Prometheus / Grafana / Sentry
 
-## 0.10 Next tasks (Phase 2 — pick up here)
+## 0.10 Next tasks (Phase 5 — pick up here)
 
-1. Add `courses` module (CRUD, `organization_id` on all queries)
-2. Wire `@nestjs/bullmq` + Redis; create queue scaffolding per §9
-3. Lesson entities + publishing workflow
-4. Upload module (presigned or local storage for dev)
-5. Extend `ai_doc.md` §0 when each item ships
+**Full implementation guide:** [`phase-5.md`](./phase-5.md) — read after Phase 4 testing passes.
+
+Summary order:
+
+1. Testing foundation + GitHub Actions CI (lint, test, build, docker)
+2. Production Docker compose hardening + entrypoint migrations
+3. Deep health checks + graceful shutdown
+4. Prometheus metrics + Grafana dashboards
+5. Sentry (API + web)
+6. Stripe Checkout, portal, webhooks
+7. Nginx reverse proxy in prod compose
+8. Update `ai_doc.md` §0 when each stream ships
 
 ---
 
@@ -910,7 +1007,6 @@ chore:
 * [x] project setup (npm workspaces, `apps/api`, `apps/web`)
 * [x] Docker Compose file (postgres, redis, api, web)
 * [x] PostgreSQL + Prisma schema
-* [ ] Redis used in app code (container only; Phase 2)
 * [x] authentication (JWT + refresh)
 * [x] RBAC (permissions, guards, seed)
 * [x] organizations (CRUD, members, invite)
@@ -918,38 +1014,51 @@ chore:
 
 ---
 
-## Phase 2 — NEXT
+## Phase 2 — COMPLETE
 
-* course management
-* uploads
-* video pipeline
-* queues (BullMQ + Redis)
-
----
-
-## Phase 3
-
-* AI quiz generation
-* realtime classroom
-* websocket notifications
+* [x] Redis + BullMQ (`@nestjs/bullmq`, 5 queues registered)
+* [x] course management (CRUD, publish, archive, pagination)
+* [x] lessons (CRUD, sort order, progress tracking)
+* [x] uploads (multipart video, local `uploads/` storage)
+* [x] video pipeline worker (dev stub → READY status)
+* [x] frontend courses UI (list, create, detail, lesson + video upload)
 
 ---
 
-## Phase 4
+## Phase 3 — COMPLETE
 
-* analytics
-* payments
-* audit logs
-* integrations
+* [x] Quiz Prisma schema + API (generate, take, score)
+* [x] AI service (OpenAI, Anthropic, mock fallback, Zod validation)
+* [x] `ai-generation` BullMQ processor
+* [x] Socket.io classroom gateway + Redis adapter
+* [x] Classroom chat + presence events
+* [x] Notifications queue processor (stub)
+* [x] Frontend quiz UI + classroom view + socket store
 
 ---
 
-## Phase 5
+## Phase 4 — COMPLETE
 
-* monitoring
-* optimization
-* CI/CD
-* production deployment
+* [x] `analytics_events` table + BullMQ ingestion processor
+* [x] Analytics overview + events API (`analytics:view`)
+* [x] Auto-tracking on course/quiz/lesson actions
+* [x] `audit_logs` table + list API (`audit:view`)
+* [x] Audit on org create, member invite, course publish, plan change
+* [x] `subscriptions` table + plans API (FREE/STARTER/PRO)
+* [x] Billing change-plan scaffold (no Stripe yet)
+* [x] Frontend: analytics dashboard, billing, audit log pages
+
+---
+
+## Phase 5 — NEXT
+
+See **[`phase-5.md`](./phase-5.md)** for the full implementation plan.
+
+* CI/CD (GitHub Actions)
+* Production Docker + nginx
+* Monitoring (Prometheus, Grafana, Sentry)
+* Stripe billing integration
+* Health checks & graceful shutdown
 
 ---
 
@@ -1039,4 +1148,9 @@ The system should be impressive both:
 
 | Date | Change | Agent note |
 |------|--------|------------|
-| 2026-05-20 | Phase 1 scaffold: monorepo, NestJS auth/org/RBAC, Next.js shell, Prisma schema + seed, Docker Compose | Initial baseline; Redis/BullMQ deferred to Phase 2 |
+| 2026-05-20 | Phase 1 scaffold: monorepo, NestJS auth/org/RBAC, Next.js shell, Prisma schema + seed, Docker Compose | Initial baseline |
+| 2026-05-20 | Phase 2: courses, lessons, uploads, BullMQ video-processing worker, dashboard courses UI | Video worker is dev stub; Redis required at runtime |
+| 2026-05-20 | Phase 3: AI quizzes, ai-generation worker, Socket.io classroom, quiz/classroom UI | Mock AI without API keys; notifications processor stub |
+| 2026-05-20 | Phase 4: analytics events, audit logs, billing scaffold, dashboard pages | Stripe not integrated; run `prisma db push` + `prisma db seed` for audit:view perm |
+| 2026-06-07 | Added `phase-5.md` — production readiness plan (CI, Docker, monitoring, Stripe, nginx) | Start after Phase 4 manual testing |
+| 2026-06-07 | Added `LOCAL_SETUP.md` — local dev prerequisites and run guide | Linked from §0.8 |

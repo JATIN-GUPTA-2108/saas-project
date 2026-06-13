@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { login } from '@/services/auth.service';
+import { fetchOrganizations } from '@/services/organizations.service';
 import { useAuthStore } from '@/stores/auth-store';
 
 export function LoginForm() {
@@ -16,11 +17,13 @@ export function LoginForm() {
 
   const mutation = useMutation({
     mutationFn: () => login(email, password),
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
+      const organizations = await fetchOrganizations(data.accessToken);
       setSession({
         user: data.user,
         accessToken: data.accessToken,
         refreshToken: data.refreshToken,
+        organization: organizations[0] ?? null,
       });
       router.push('/dashboard');
     },

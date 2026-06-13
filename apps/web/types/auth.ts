@@ -13,7 +13,7 @@ export type Organization = {
   slug: string;
   createdAt: string;
   updatedAt: string;
-  role?: { slug: string; name: string };
+  role?: { slug: string; name: string; permissions: string[] };
 };
 
 export type AuthTokens = {

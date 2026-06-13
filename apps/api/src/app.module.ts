@@ -6,9 +6,17 @@ import { AuthModule } from './auth/auth.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { HealthController } from './health/health.controller';
+import { AnalyticsModule } from './analytics/analytics.module';
+import { AuditModule } from './audit/audit.module';
+import { BillingModule } from './billing/billing.module';
+import { ClassroomModule } from './classroom/classroom.module';
+import { CoursesModule } from './courses/courses.module';
+import { QuizzesModule } from './quizzes/quizzes.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { QueueModule } from './queue/queue.module';
 import { RbacModule } from './rbac/rbac.module';
+import { UploadsModule } from './uploads/uploads.module';
 
 @Module({
   imports: [
@@ -23,6 +31,14 @@ import { RbacModule } from './rbac/rbac.module';
     RbacModule,
     AuthModule,
     OrganizationsModule,
+    QueueModule,
+    CoursesModule,
+    UploadsModule,
+    QuizzesModule,
+    ClassroomModule,
+    AnalyticsModule,
+    AuditModule,
+    BillingModule,
   ],
   controllers: [HealthController],
   providers: [
