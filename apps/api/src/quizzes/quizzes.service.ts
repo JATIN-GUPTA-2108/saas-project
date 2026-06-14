@@ -11,6 +11,7 @@ import { AnalyticsTrackerService } from '../analytics/analytics.service';
 import { QUEUES } from '../queue/queue.constants';
 import { AiGenerationJob } from '../queue/processors/ai-generation.processor';
 import { RbacService } from '../rbac/rbac.service';
+import { AiService } from '../ai/ai.service';
 import { GenerateQuizDto } from './dto/generate-quiz.dto';
 import { SubmitAttemptDto } from './dto/submit-attempt.dto';
 
@@ -20,8 +21,56 @@ export class QuizzesService {
     private readonly prisma: PrismaService,
     private readonly rbac: RbacService,
     private readonly analytics: AnalyticsTrackerService,
+    private readonly ai: AiService,
     @InjectQueue(QUEUES.AI_GENERATION) private readonly aiQueue: Queue,
   ) {}
+
+  async generateLessonSummary(organizationId: string, lessonId: string) {
+    const lesson = await this.prisma.lesson.findFirst({
+      where: { id: lessonId, organizationId },
+    });
+    if (!lesson) throw new NotFoundException('Lesson not found');
+    if (!lesson.content?.trim()) {
+      throw new BadRequestException('Lesson has no content to summarize.');
+    }
+
+    return this.ai.generateLessonSummary(lesson.title, lesson.content);
+  }
+
+  async generateKeyConcepts(organizationId: string, lessonId: string) {
+    const lesson = await this.prisma.lesson.findFirst({
+      where: { id: lessonId, organizationId },
+    });
+    if (!lesson) throw new NotFoundException('Lesson not found');
+    if (!lesson.content?.trim()) {
+      throw new BadRequestException('Lesson has no content to analyze.');
+    }
+
+    return this.ai.generateKeyConcepts(lesson.title, lesson.content);
+  }
+
+  async answerQuestion(
+    organizationId: string,
+    lessonId: string,
+    question: string,
+  ): Promise<string> {
+    const lesson = await this.prisma.lesson.findFirst({
+      where: {
+        id: lessonId,
+        organizationId,
+      },
+    });
+
+    if (!lesson) {
+      throw new NotFoundException('Lesson not found.');
+    }
+
+    if (!lesson.content?.trim()) {
+      return "This lesson doesn't have any content to answer questions from.";
+    }
+
+    return this.ai.answerQuestion(lesson.content, question);
+  }
 
   async generate(organizationId: string, dto: GenerateQuizDto) {
     const lesson = await this.prisma.lesson.findFirst({

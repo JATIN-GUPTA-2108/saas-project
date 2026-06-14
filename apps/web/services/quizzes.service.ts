@@ -15,8 +15,34 @@ export async function generateQuiz(
   });
 }
 
+export async function generateSummary(ctx: AuthCtx, lessonId: string) {
+  return apiRequest<string>(`/quizzes/lessons/${lessonId}/summary`, {
+    ...ctx,
+    method: 'POST',
+  });
+}
+
+export async function generateKeyConcepts(ctx: AuthCtx, lessonId: string) {
+  return apiRequest<string[]>(`/quizzes/lessons/${lessonId}/key-concepts`, {
+    ...ctx,
+    method: 'POST',
+  });
+}
+
+export async function askQuestion(
+  ctx: AuthCtx,
+  lessonId: string,
+  question: string,
+) {
+  return apiRequest<string>(`/quizzes/lessons/${lessonId}/ask`, {
+    ...ctx,
+    method: 'POST',
+    body: { question },
+  });
+}
+
 export async function fetchQuizByLesson(ctx: AuthCtx, lessonId: string) {
-  return apiRequest<Quiz>(`/quizzes/lesson/${lessonId}`, ctx);
+  return apiRequest<Quiz | null>(`/quizzes/lesson/${lessonId}`, ctx);
 }
 
 export async function submitQuizAttempt(

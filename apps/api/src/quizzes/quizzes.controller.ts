@@ -17,6 +17,14 @@ import { PermissionsGuard } from '../rbac/guards/permissions.guard';
 import { GenerateQuizDto } from './dto/generate-quiz.dto';
 import { SubmitAttemptDto } from './dto/submit-attempt.dto';
 import { QuizzesService } from './quizzes.service';
+import { IsNotEmpty, IsString } from 'class-validator';
+
+class AskQuestionDto {
+  @IsString()
+  @IsNotEmpty()
+  question!: string;
+}
+
 
 @ApiTags('quizzes')
 @ApiBearerAuth()
@@ -31,6 +39,31 @@ export class QuizzesController {
   @Post('generate')
   generate(@OrgId() orgId: string, @Body() dto: GenerateQuizDto) {
     return this.quizzes.generate(orgId, dto);
+  }
+
+  @Post('lessons/:lessonId/summary')
+  generateSummary(
+    @OrgId() orgId: string,
+    @Param('lessonId') lessonId: string,
+  ) {
+    return this.quizzes.generateLessonSummary(orgId, lessonId);
+  }
+
+  @Post('lessons/:lessonId/key-concepts')
+  generateKeyConcepts(
+    @OrgId() orgId: string,
+    @Param('lessonId') lessonId: string,
+  ) {
+    return this.quizzes.generateKeyConcepts(orgId, lessonId);
+  }
+
+  @Post('lessons/:lessonId/ask')
+  askQuestion(
+    @OrgId() orgId: string,
+    @Param('lessonId') lessonId: string,
+    @Body() dto: AskQuestionDto,
+  ) {
+    return this.quizzes.answerQuestion(orgId, lessonId, dto.question);
   }
 
   @Get('lesson/:lessonId')

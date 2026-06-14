@@ -6,9 +6,12 @@ import { useState } from 'react';
 import { ApiError } from '@/lib/api';
 import { useAuthCtx } from '@/hooks/use-auth-ctx';
 import {
+  askQuestion,
   fetchMyAttempt,
   fetchQuizByLesson,
+  generateKeyConcepts,
   generateQuiz,
+  generateSummary,
   submitQuizAttempt,
 } from '@/services/quizzes.service';
 import type { QuizAttemptResult } from '@/types/quiz';
@@ -28,10 +31,14 @@ export function QuizTake({
 }) {
   const queryClient = useQueryClient();
   const ctx = useAuthCtx();
-  const orgId = ctx?.orgId;
+  const orgId = ctx?.organizationId;
 
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [result, setResult] = useState<QuizAttemptResult | null>(null);
+  const [summary, setSummary] = useState('');
+  const [keyConcepts, setKeyConcepts] = useState<string[]>([]);
+  const [question, setQuestion] = useState('');
+  const [answer, setAnswer] = useState('');
   const [questionCount, setQuestionCount] = useState(5);
 
   const { data: quiz, isLoading, refetch } = useQuery({
@@ -62,6 +69,27 @@ export function QuizTake({
     },
     enabled: !!ctx && !!quiz?.id && quiz.status === 'READY',
     retry: false,
+  });
+
+  const summaryMutation = useMutation({
+    mutationFn: () => generateSummary(ctx!, lessonId),
+    onSuccess: (data) => {
+      setSummary(data);
+    },
+  });
+
+  const keyConceptsMutation = useMutation({
+    mutationFn: () => generateKeyConcepts(ctx!, lessonId),
+    onSuccess: (data) => {
+      setKeyConcepts(data);
+    },
+  });
+
+  const answerMutation = useMutation({
+    mutationFn: () => askQuestion(ctx!, lessonId, question),
+    onSuccess: (data) => {
+      setAnswer(data);
+    },
   });
 
   const generateMutation = useMutation({
@@ -231,7 +259,91 @@ export function QuizTake({
         ← Back to course
       </Link>
 
-      <h2 className="mt-4 text-xl font-semibold">{quiz.title}</h2>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => summaryMutation.mutate()}
+          disabled={summaryMutation.isPending}
+          className="rounded-lg bg-gray-200 px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-300 disabled:opacity-60"
+        >
+          {summaryMutation.isPending ? 'Generating…' : 'Generate AI Summary'}
+        </button>
+        <button
+          type="button"
+          onClick={() => keyConceptsMutation.mutate()}
+          disabled={keyConceptsMutation.isPending}
+          className="rounded-lg bg-gray-200 px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-300 disabled:opacity-60"
+        >
+          {keyConceptsMutation.isPending
+            ? 'Extracting…'
+            : 'Extract Key Concepts'}
+        </button>
+      </div>
+
+      {summary && (
+        <div className="prose prose-sm mt-4 rounded-xl border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900">
+          <h3 className="text-lg font-semibold">Lesson Summary</h3>
+          {summary.split('\n').map((line, i) => (
+            <p key={i}>{line}</p>
+          ))}
+        </div>
+      )}
+
+      {keyConcepts.length > 0 && (
+        <div className="mt-4 rounded-xl border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900">
+          <h3 className="text-lg font-semibold">Key Concepts</h3>
+          <ul className="mt-2 flex flex-wrap gap-2">
+            {keyConcepts.map((concept) => (
+              <li
+                key={concept}
+                className="rounded-full bg-indigo-100 px-3 py-1 text-sm font-medium text-indigo-800"
+              >
+                {concept}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="mt-6 rounded-xl border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900">
+        <h3 className="text-lg font-semibold">Ask a question</h3>
+        <form
+          className="mt-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (question.trim()) {
+              answerMutation.mutate();
+            }
+          }}
+        >
+          <textarea
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            placeholder="What is the main purpose of..."
+            className="w-full rounded-lg border-zinc-300 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+            rows={3}
+          />
+          <button
+            type="submit"
+            disabled={answerMutation.isPending || !question.trim()}
+            className="mt-2 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-60"
+          >
+            {answerMutation.isPending ? 'Thinking…' : 'Ask AI'}
+          </button>
+        </form>
+        {answerMutation.isSuccess && (
+          <div className="prose prose-sm mt-4 rounded-lg bg-zinc-100 p-3 dark:bg-zinc-800 dark:text-zinc-200">
+            {answer}
+          </div>
+        )}
+        {answerMutation.isError && (
+          <p className="mt-2 text-sm text-red-600">
+            {(answerMutation.error as Error).message}
+          </p>
+        )}
+      </div>
+
+      <h2 className="mt-6 text-xl font-semibold">{quiz.title}</h2>
       <p className="mt-1 text-sm text-zinc-500">{lessonTitle}</p>
 
       {previousAttempt && (
