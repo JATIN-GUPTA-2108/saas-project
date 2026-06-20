@@ -17,7 +17,7 @@ export function CreateOrgForm() {
     onSuccess: (org) => {
       setName('');
       setError(null);
-      setActiveOrganization({ ...org, role: { slug: 'owner', name: 'Owner' } });
+      setActiveOrganization({ ...org, role: { slug: 'owner', name: 'Owner', permissions: [] } });
       void queryClient.invalidateQueries({ queryKey: ['organizations'] });
       void queryClient.invalidateQueries();
     },

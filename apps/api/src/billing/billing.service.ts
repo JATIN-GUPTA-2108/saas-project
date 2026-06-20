@@ -6,7 +6,6 @@ import {
 import { PlanTier } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
-import { BILLING_PLANS } from './billing.constants';
 import { ChangePlanDto } from './dto/change-plan.dto';
 
 @Injectable()
@@ -16,8 +15,48 @@ export class BillingService {
     private readonly audit: AuditService,
   ) {}
 
+  private getBillingPlans() {
+    return [
+      {
+        tier: PlanTier.FREE,
+        name: 'Free',
+        priceMonthly: 0,
+        seats: 5,
+        features: ['5 team members', '3 courses', 'Basic analytics'],
+        courseLimit: 3,
+      },
+      {
+        tier: PlanTier.STARTER,
+        name: 'Starter',
+        priceMonthly: 29,
+        seats: 25,
+        features: [
+          '25 team members',
+          'Unlimited courses',
+          'AI quizzes',
+          'Analytics',
+        ],
+        courseLimit: null,
+      },
+      {
+        tier: PlanTier.PRO,
+        name: 'Pro',
+        priceMonthly: 99,
+        seats: 100,
+        features: [
+          '100 team members',
+          'Unlimited courses',
+          'Priority support',
+          'Audit logs',
+          'Advanced analytics',
+        ],
+        courseLimit: null,
+      },
+    ] as const;
+  }
+
   listPlans() {
-    return BILLING_PLANS.map((p) => ({
+    return this.getBillingPlans().map((p) => ({
       tier: p.tier,
       name: p.name,
       priceMonthly: p.priceMonthly,
@@ -34,7 +73,7 @@ export class BillingService {
       sub = await this.createDefaultSubscription(organizationId);
     }
 
-    const plan = BILLING_PLANS.find((p) => p.tier === sub.plan);
+    const plan = this.getBillingPlans().find((p) => p.tier === sub.plan);
     const memberCount = await this.prisma.organizationMembership.count({
       where: { organizationId },
     });
@@ -71,12 +110,8 @@ export class BillingService {
     });
   }
 
-  async changePlan(
-    organizationId: string,
-    userId: string,
-    dto: ChangePlanDto,
-  ) {
-    const planDef = BILLING_PLANS.find((p) => p.tier === dto.plan);
+  async changePlan(organizationId: string, userId: string, dto: ChangePlanDto) {
+    const planDef = this.getBillingPlans().find((p) => p.tier === dto.plan);
     if (!planDef) throw new BadRequestException('Invalid plan');
 
     const periodEnd = new Date();

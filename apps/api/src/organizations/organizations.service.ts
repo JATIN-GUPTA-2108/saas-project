@@ -65,7 +65,7 @@ export class OrganizationsService {
       where: { userId },
       include: {
         organization: true,
-        role: { include: { permissions: true } },
+        role: { include: { permissions: { include: { permission: true } } } },
       },
     });
 
@@ -74,7 +74,7 @@ export class OrganizationsService {
       role: {
         slug: m.role.slug,
         name: m.role.name,
-        permissions: m.role.permissions.map((p) => p.slug),
+        permissions: m.role.permissions.map((p) => p.permission.slug),
       },
     }));
   }
